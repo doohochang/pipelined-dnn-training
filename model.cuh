@@ -1,7 +1,7 @@
 #ifndef _model_h_
 #define _model_h_
 
-#include "hparams.h"
+#include "hparams.cuh"
 
 typedef struct model {
     ModelSpec spec;
