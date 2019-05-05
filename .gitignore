@@ -1,6 +1,9 @@
 # Created by https://www.gitignore.io/api/vim,c++,cuda,linux,macos,python,windows,notepadpp,pycharm+all,intellij+all
 # Edit at https://www.gitignore.io/?templates=vim,c++,cuda,linux,macos,python,windows,notepadpp,pycharm+all,intellij+all
 
+# Test files
+test
+
 ### C++ ###
 # Prerequisites
 *.d
