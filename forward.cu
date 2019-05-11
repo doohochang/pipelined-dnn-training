@@ -1,35 +1,11 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
+#include "forward.cuh"
 #include "model.cuh"
 #include "activation.cuh"
 
-/*
-    Run forward algorithm with sub portion of the given model which has layers in range [start_layer,  end_layer]
-
-    input: input vector to put into start layer
-    output: forward output vectors of each layer
-*/
-void run_forward(
-    Model model, 
-    unsigned int start_layer, 
-    unsigned int end_layer, 
-    float *input, 
-    float **output,
-    cudaStream_t stream
-) {
-    cublasHandle_t handle;
-    cublasCreate(&handle);
-    cublasSetStream(handle, stream);
-
-    float *current_input = input;
-    for (int i = start_layer, o = 0; i <= end_layer; i++, o++){
-        // TODO: Implement whole foward logics
-
-        //cudaMalloc(&current_output, sizeof(float) * model.spec.hidden_layers[i].number_of_nodes);
-        
-    }
-}
+#define THREAD_NUM 256
 
 void run_forward_step(
     cublasHandle_t handle,
@@ -66,11 +42,33 @@ void run_forward_step(
         case ACTIVATION_LINEAR:
             break;
         case ACTIVATION_SIGMOID:
-            sigmoid_kernel<<<256, (output_size + 255) / 256>>>(output, output_size);
+            sigmoid_kernel<<<THREAD_NUM, (output_size + THREAD_NUM - 1) / THREAD_NUM>>>(output, output_size);
             break;
         case ACTIVATION_RELU:
-            relu_kernel<<<256, (output_size + 255) / 256>>>(output, output_size);
+            relu_kernel<<<THREAD_NUM, (output_size + THREAD_NUM - 1) / THREAD_NUM>>>(output, output_size);
             break;
+    }
+}
+
+void run_forward(SubModel *submodel, float *input, cudaStream_t stream) {
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    cublasSetStream(handle, stream);
+
+    run_forward_step(
+        handle, stream, submodel->spec.layers[0].activation,
+        input, submodel->spec.number_of_input_nodes,
+        submodel->weight_matrices[0], submodel->biases[0],
+        submodel->forward_values[0], submodel->spec.layers[0].number_of_nodes
+    );
+
+    for (int i = 1; i < submodel->spec.number_of_layers; i++){
+        run_forward_step(
+            handle, stream, submodel->spec.layers[i].activation,
+            submodel->forward_values[i - 1], submodel->spec.layers[i - 1].number_of_nodes,
+            submodel->weight_matrices[i], submodel->biases[i],
+            submodel->forward_values[i], submodel->spec.layers[i].number_of_nodes
+        );
     }
 }
 
