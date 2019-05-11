@@ -50,14 +50,10 @@ void run_forward_step(
     }
 }
 
-void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream) {
+void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one) {
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
-
-    float *one;
-    cudaMalloc(&one, sizeof(float));
-    *one = 1.0;
 
     run_forward_step(
         handle, stream, submodel->spec.layers[0].activation,
@@ -76,8 +72,6 @@ void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cuda
             one
         );
     }
-
-    cudaFree(one);
 }
 
 __global__ void exp_kernel(float *array, unsigned int size) {
@@ -110,23 +104,21 @@ __global__ void pick_minus_log_ps(float *matrix, float *minus_log_ps, unsigned i
         minus_log_ps[index] = -log(matrix[index * col + indices[index]]);
 }
 
-void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned int number_of_scores, unsigned int *answers, float *loss, float *grad_scores, cudaStream_t stream, const float *ones) {
+void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned int number_of_scores, unsigned int *answers, float *loss, float *grad_scores, cudaStream_t stream, const float *ones, float *batch_size_buffer) {
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
 
-    cudaMemcpy(grad_scores, scores, sizeof(float) * batch_size * number_of_scores, cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(grad_scores, scores, sizeof(float) * batch_size * number_of_scores, cudaMemcpyDeviceToDevice, stream);
     exp_kernel<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size * number_of_scores);
 
     /*
-    float *ones;
-    cudaMalloc(&ones, sizeof(float) * number_of_scores);
-    set_value<<<(number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(1.0f, ones, number_of_scores);
+        float *ones;
+        cudaMalloc(&ones, sizeof(float) * number_of_scores);
+        set_value<<<(number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(1.0f, ones, number_of_scores);
     */
 
-    float *sums;
-    cudaMalloc(&sums, sizeof(float) * batch_size);
-    set_value<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(0, sums, batch_size);
+    set_value<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(0, batch_size_buffer, batch_size);
     
     cublasSgemv(
         handle, CUBLAS_OP_N,
@@ -135,28 +127,22 @@ void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned 
         grad_scores, batch_size,
         ones, 1,
         ones,
-        sums, 1
+        batch_size_buffer, 1
     );
 
-    divide_by_vector<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, sums, batch_size, number_of_scores);
+    divide_by_vector<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, batch_size, number_of_scores);
 
-    float *minus_log_ps;
-    cudaMalloc(&minus_log_ps, sizeof(float) * batch_size);
-    pick_minus_log_ps<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, minus_log_ps, answers, batch_size, number_of_scores);
+    pick_minus_log_ps<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, answers, batch_size, number_of_scores);
     
-    cublasSdot(handle, batch_size, minus_log_ps, 1, ones, 1, loss);
-
-    cudaFree(minus_log_ps);
+    cublasSdot(handle, batch_size, batch_size_buffer, 1, ones, 1, loss);
 
     minus_one<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, answers, batch_size, number_of_scores);
-
-    cudaFree(sums);
 }
 
-void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones) {
+void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer) {
     switch (layer.loss) {
         case LOSS_SOFTMAX_CROSS_ENTROPY:
-            run_softmax_cross_entropy(input, batch_size, layer.number_of_nodes, (unsigned int *)answers, loss, grad_input, stream, ones);
+            run_softmax_cross_entropy(input, batch_size, layer.number_of_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
             break;
     }
 }

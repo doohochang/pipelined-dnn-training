@@ -6,11 +6,31 @@
 #include "model.cuh"
 
 /*
-    Run forward algorithm with sub portion of the given model which has layers in range [start_layer,  end_layer]
+    Run forward algorithm with the given submodel
 
-    input: input vector to put into start layer
+    input: input matrix to put into first layer (batch_size * first_layer_size)
+    batch_size: the size of mini batch
+    stream: stream to schedule forward algorithm
+    one: float type 1 in device memory
 */
-void run_forward(SubModel *submodel, float *input, cudaStream_t stream);
+void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one);
+
+
+
+/*
+    Run output layer calculation
+
+    layer: output layer specification
+    input: input matrix to put into output layer (batch_size * layer_size)
+    batch_size: the size of mini batch
+    answers: answers of each sample in mini-batch
+    loss: float pointer to store loss output
+    grad_input: float array pointer to store gradient matrix (batch_size * layer_size)
+    stream: stream to schedule calculation
+    ones: batch size float array pointer which is set one
+    batch_size_buffer: float array pointer which has batch_size
+*/
+void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer);
 
 #endif
 
