@@ -39,6 +39,7 @@ typedef struct _HyperParams {
     ModelSpec model_spec;
     int epoch;
     int merge_period_epoch;
+    int batch_size;
     float learning_rate;
 } HyperParams;
 
