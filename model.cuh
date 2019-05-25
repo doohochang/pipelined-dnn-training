@@ -21,6 +21,8 @@ class SubModel {
 
         // Computed forward values of each node
         float **forward_values;
+        
+        float **gradient;
 
         SubModel(SubModelSpec spec);
         ~SubModel();
