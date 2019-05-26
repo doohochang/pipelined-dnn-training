@@ -30,7 +30,7 @@ void run_backward_step(
     float *upper_values, float *lower_values,
     float *weight_matrix, float *bias,
     float *lower_grads, unsigned int lower_size,
-    const float *ones
+    const float *ones, const float *zero
 ) {
     // TODO: Implement activation derivation
     switch (activation){
@@ -65,7 +65,7 @@ void run_backward_step(
         ones,
         upper_grads, batch_size,
         weight_matrices, lower_size,
-        ones,
+        zero,
         lower_grads, batch_size);
     
     // Update weight matrix
@@ -81,7 +81,7 @@ void run_backward_step(
      
 }
 
-void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *learning_weight, cudaStream_t stream, float *one) {
+void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *learning_weight, cudaStream_t stream, float *one, float* zero) {
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
@@ -95,7 +95,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
         upper_values, submodel->forward_values[last],
         submodel->weight_matrices[last], submodel->biases[last],
         submodel->gradients[last], submodel->spec.layers[last].number_of_nodes,
-        one
+        one, zero
     );
 
     for (int i = submodel->spec.number_of_layers - 2; i >= 0 ; i--){
@@ -106,7 +106,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
             submodel->forward_values[i + 1], submodel->forward_values[i],
             submodel->weight_matrices[i], submodel->biases[i],
             submodel->gradients[i], submodel->spec.layers[i].number_of_nodes,
-            one
+            one, zero
         );
     }  
 }
