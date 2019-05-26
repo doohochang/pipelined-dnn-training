@@ -64,7 +64,7 @@ void run_backward_step(
         batch_size, lower_size, upper_size,
         ones,
         upper_grads, batch_size,
-        weight_matrices, lower_size,
+        weight_matrix, lower_size,
         zero,
         lower_grads, batch_size);
     
