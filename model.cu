@@ -52,10 +52,12 @@ SubModel::SubModel(SubModelSpec spec) {
     // Alloc biases & forward values
     cudaMalloc(&(this->biases), sizeof(float *) * spec.number_of_layers);
     cudaMalloc(&(this->forward_values), sizeof(float *) * spec.number_of_layers);
+    cudaMalloc(&(this->gradients), sizeof(float *) * spec.number_of_layers);
 
     for (int i = 0; i < spec.number_of_layers; i++) {
         alloc_zero_values(&(this->biases[i]), sizeof(float) * spec.layers[i].number_of_nodes);
         cudaMalloc(&(this->forward_values[i]), sizeof(float) * spec.layers[i].number_of_nodes);
+        cudaMalloc(&(this->gradients[i]), sizeof(float) * spec.layers[i].number_of_nodes);
     }
 }
 
@@ -64,9 +66,11 @@ SubModel::~SubModel() {
         cudaFree(this->weight_matrices[i]);
         cudaFree(this->biases[i]);
         cudaFree(this->forward_values[i]);
+        cudaFree(this->gradients[i]);
     }
 
     cudaFree(this->weight_matrices);
     cudaFree(this->biases);
     cudaFree(this->forward_values);
+    cudaFree(this->gradients);
 }
