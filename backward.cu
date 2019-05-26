@@ -19,12 +19,13 @@ __global__ void relu_derivative(float *upper_grads, float *upper_values, unsigne
             upper_grads[index] = 0;
 }
 
+// learning_weight = -(learning_rate / batch_size)
 
 void run_backward_step(
     cublasHandle_t handle, 
     cudaStream_t stream, 
     Activation activation, 
-    float *minus_learning_rate,
+    float *learning_weight,
     float *upper_grads, unsigned int batch_size, unsigned int upper_size,
     float *upper_values, float *lower_values,
     float *weight_matrix, float *bias,
@@ -49,7 +50,7 @@ void run_backward_step(
     cublasSgemv(
         handle, CUBLAS_OP_T,
         batch_size, upper_size,
-        minus_learning_rate,
+        learning_weight,
         upper_grads, batch_size,
         ones, 1,
         ones,
@@ -59,7 +60,7 @@ void run_backward_step(
     // Update weight matrix 배치가 없을때
     cublasSger(
         handle, lower_size, upper_size,
-        minus_learning_rate,
+        learning_weight,
         lower_values, 1,
         upper_grads, 1,
         weight_matrix, lower_size
@@ -75,12 +76,12 @@ void run_backward_step(
         ones,
         lower_values, batch_size,
         upper_grads, batch_size,
-        minus_learning_rate,
+        learning_weight,
         weight_matrix, lower_size);
      
 }
 
-void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *minus_learning_rate, cudaStream_t stream, float *one) {
+void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *learning_weight, cudaStream_t stream, float *one) {
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
@@ -89,7 +90,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
     
     run_backward_step(
         handle, stream, submodel->spec.layers[last].activation,
-        minus_learning_rate,
+        learning_weight,
         upper_grads, batch_size, number_of_upper_nodes,
         upper_values, submodel->forward_values[last],
         submodel->weight_matrices[last], submodel->biases[last],
@@ -100,7 +101,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
     for (int i = submodel->spec.number_of_layers - 2; i >= 0 ; i--){
         run_backward_step(
             handle, stream, submodel->spec.layers[i].activation,
-            minus_learning_rate,
+            learning_weight,
             submodel->gradient[i + 1], batch_size, submodel->spec.layers[i + 1].number_of_nodes,
             submodel->forward_values[i + 1], submodel->forward_values[i],
             submodel->weight_matrices[i], submodel->biases[i],
