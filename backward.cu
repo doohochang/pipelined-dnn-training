@@ -56,17 +56,17 @@ void run_backward_step(
         ones,
         bias, 1
     );
-    /* 
-    // Update weight matrix 배치가 없을때
-    cublasSger(
-        handle, lower_size, upper_size,
-        learning_weight,
-        lower_values, 1,
-        upper_grads, 1,
-        weight_matrix, lower_size
-    );
-    */
-    
+
+    // Update lower grads
+    cublasSgemm(
+        handle,
+        CUBLAS_OP_N, CUBLAS_OP_T,
+        batch_size, lower_size, upper_size,
+        ones,
+        upper_grads, batch_size,
+        weight_matrices, lower_size,
+        ones,
+        lower_grads, batch_size);
     
     // Update weight matrix
     cublasSgemm(
@@ -94,7 +94,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
         upper_grads, batch_size, number_of_upper_nodes,
         upper_values, submodel->forward_values[last],
         submodel->weight_matrices[last], submodel->biases[last],
-        submodel->gradient[last], submodel->spec.layers[last].number_of_nodes,
+        submodel->gradients[last], submodel->spec.layers[last].number_of_nodes,
         one
     );
 
@@ -102,10 +102,10 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
         run_backward_step(
             handle, stream, submodel->spec.layers[i].activation,
             learning_weight,
-            submodel->gradient[i + 1], batch_size, submodel->spec.layers[i + 1].number_of_nodes,
+            submodel->gradients[i + 1], batch_size, submodel->spec.layers[i + 1].number_of_nodes,
             submodel->forward_values[i + 1], submodel->forward_values[i],
             submodel->weight_matrices[i], submodel->biases[i],
-            submodel->gradient[i], submodel->spec.layers[i].number_of_nodes,
+            submodel->gradients[i], submodel->spec.layers[i].number_of_nodes,
             one
         );
     }  
