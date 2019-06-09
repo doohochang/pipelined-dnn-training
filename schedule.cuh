@@ -3,5 +3,6 @@
 
 #include "hparams.cuh"
 
+SubModelSpec *generate_submodel_specs(int num_devices, ModelSpec model);
 
 #endif

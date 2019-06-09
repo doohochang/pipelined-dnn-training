@@ -21,6 +21,7 @@ typedef struct _OutputLayer {
     Loss loss;
 } OutputLayer;
 
+// Number of hidden layers must be greater than number of devices
 typedef struct _ModelSpec {
     unsigned int number_of_input_nodes;
     unsigned int number_of_hidden_layers;
