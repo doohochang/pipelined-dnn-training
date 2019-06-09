@@ -97,16 +97,17 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
         submodel->gradients[last], submodel->spec.layers[last].number_of_nodes,
         one, zero
     );
-
-    for (int i = submodel->spec.number_of_layers - 2; i >= 0 ; i--){
-        run_backward_step(
-            handle, stream, submodel->spec.layers[i].activation,
-            learning_weight,
-            submodel->gradients[i + 1], batch_size, submodel->spec.layers[i + 1].number_of_nodes,
-            submodel->forward_values[i + 1], submodel->forward_values[i],
-            submodel->weight_matrices[i], submodel->biases[i],
-            submodel->gradients[i], submodel->spec.layers[i].number_of_nodes,
-            one, zero
-        );
-    }  
+    if(last > 0){
+        for (int i = submodel->spec.number_of_layers - 2; i >= 0 ; i--){
+            run_backward_step(
+                handle, stream, submodel->spec.layers[i].activation,
+                learning_weight,
+                submodel->gradients[i + 1], batch_size, submodel->spec.layers[i + 1].number_of_nodes,
+                submodel->forward_values[i + 1], submodel->forward_values[i],
+                submodel->weight_matrices[i], submodel->biases[i],
+                submodel->gradients[i], submodel->spec.layers[i].number_of_nodes,
+                one, zero
+            );
+        }
+    } 
 }

@@ -45,6 +45,14 @@ int main(int argc, char** argv) {
     hyperparmeters.batch_size = BATCH_SIZE;
     hyperparmeters.learning_rate = LEARNIG_RATE;
     
+
+    SubModelSpec submodelspec;
+    submodelspec.number_of_layers = N_HIDDEN;
+    submodelspec.number_of_input_nodes = D_INPUT;
+    submodelspec.layers = &hiddenlayer;
+    
+    SubModel submodel(submodelspec);
+    
     cudaSetDevice(0);
     srand(time(NULL));
     float *tfloat, *train_input, *test_input;
@@ -59,7 +67,7 @@ int main(int argc, char** argv) {
 	cudaMalloc(&test_label, sizeof(int) * TEST_CASE);
     
     FILE *train_image_path, *test_image_path;
-	FILE *train_label_path, *test_label_path, *lab;
+	FILE *train_label_path, *test_label_path;
 
 	train_image_path = fopen("./data/train_image.txt", "r");
 	train_label_path = fopen("./data/train_label.txt", "r");
@@ -124,7 +132,48 @@ int main(int argc, char** argv) {
 	fclose(test_image_path);
 	fclose(test_label_path);
     
+    float *input;
+	int *label;
+
+	cudaMalloc(&input, sizeof(float) * D_INPUT * BATCH_SIZE);
+	cudaMalloc(&label, sizeof(int) * BATCH_SIZE);
     
+    cudaStream_t stream;
+	cudaStreamCreate(&stream);
+    
+    float *one;
+    float *zero;
+    float *batch_size_buffer;
+    float lr = LEARNIG_RATE;
+    float *learning_rate;
+    
+    cudaMalloc(&one, sizeof(float) * D_HIDDEN * BATCH_SIZE);
+    cudaMemset(one, 1,  sizeof(float) * D_HIDDEN * BATCH_SIZE);
+    
+	cudaMalloc(&zero, sizeof(float) * D_HIDDEN * BATCH_SIZE);
+    cudaMemset(zero, 0,  sizeof(float) * D_HIDDEN * BATCH_SIZE);
+    
+    cudaMalloc(&batch_size_buffer, sizeof(float) * BATCH_SIZE);
+    cudaMalloc(&learning_rate, sizeof(float));
+    
+    cudaMemcpyAsync(learning_rate, &lr, sizeof(float), cudaMemcpyHostToDevice, stream);
+    
+    //start = clock();
+	for(int epoch = 0; epoch < EPOCH; epoch++)
+	{
+		for(int n = 0; n < TRAIN_CASE/BATCH_SIZE; n++)
+		{
+			cudaMemcpyAsync(input, &train_input[n*BATCH_SIZE*D_INPUT], sizeof(float) * BATCH_SIZE * D_INPUT, cudaMemcpyHostToDevice, stream);
+			cudaMemcpyAsync(label, &train_label[n*BATCH_SIZE], sizeof(int) * BATCH_SIZE, cudaMemcpyHostToDevice, stream);
+
+            run_forward(&submodel, input, BATCH_SIZE, stream, one);
+            run_output_layer(outputlayer, *submodel.forward_values, BATCH_SIZE, label, submodel.loss, *submodel.gradients, stream, one, batch_size_buffer);
+            run_backward(&submodel, D_OUTPUT, *submodel.forward_values, *submodel.gradients, BATCH_SIZE, learning_rate, stream, one, zero);
+            
+		}
+
+		//test
+    }
     
     
     return 0;

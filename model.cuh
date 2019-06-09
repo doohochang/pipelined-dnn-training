@@ -23,6 +23,8 @@ class SubModel {
         float **forward_values;
         
         float **gradients;
+        
+        float * loss;
 
         SubModel(SubModelSpec spec);
         ~SubModel();
