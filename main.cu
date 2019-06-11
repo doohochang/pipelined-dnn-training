@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     submodelspec.number_of_input_nodes = D_INPUT;
     submodelspec.layers = hiddenlayers;
     
-//    SubModel submodel(submodelspec); ////여기서 오류발생
+    SubModel submodel(submodelspec); ////여기서 오류발생
 /*    
     cudaSetDevice(0);
     srand(time(NULL));

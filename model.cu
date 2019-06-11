@@ -24,7 +24,7 @@ void alloc_zero_values(float **dev_ptr, size_t size) {
 
 SubModel::SubModel(SubModelSpec spec) {
     this->spec = spec;
-
+/*
     // Initialize Curand generator
     curandGenerator_t randGen;
 	curandCreateGenerator(&randGen, CURAND_RNG_PSEUDO_DEFAULT);
@@ -58,10 +58,10 @@ SubModel::SubModel(SubModelSpec spec) {
         alloc_zero_values(&(this->biases[i]), sizeof(float) * spec.layers[i].number_of_nodes);
         cudaMalloc(&(this->forward_values[i]), sizeof(float) * spec.layers[i].number_of_nodes);
         cudaMalloc(&(this->gradients[i]), sizeof(float) * spec.layers[i].number_of_nodes);
-    }
+    }*/
 }
 
-SubModel::~SubModel() {
+SubModel::~SubModel() {/* 여기 오류있다 !
     for (int i = 0; i < spec.number_of_layers; i++) {
         cudaFree(this->weight_matrices[i]);
         cudaFree(this->biases[i]);
@@ -72,5 +72,5 @@ SubModel::~SubModel() {
     cudaFree(this->weight_matrices);
     cudaFree(this->biases);
     cudaFree(this->forward_values);
-    cudaFree(this->gradients);
+    cudaFree(this->gradients);*/
 }
