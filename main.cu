@@ -12,21 +12,25 @@
 #define TEST_CASE 10000
 #define NUM_DEVICE 1
 #define THREAD_LEN 256
-#define N_HIDDEN 1
+#define N_HIDDEN 2
 #define D_INPUT 784
-#define D_HIDDEN 1000
+#define D_HIDDEN_1 1000
+#define D_HIDDEN_2 10
 #define D_OUTPUT 10
 #define LEARNIG_RATE 0.01
 #define BATCH_SIZE 100
 #define MERGE_EPOCH 1
 #define EPOCH 1000
 
-
 int main(int argc, char** argv) {
     
-    HiddenLayer hiddenlayer;
-    hiddenlayer.number_of_nodes = D_HIDDEN;
-    hiddenlayer.activation = ACTIVATION_RELU;
+    HiddenLayer* hiddenlayers = (HiddenLayer*)malloc(sizeof(HiddenLayer)* N_HIDDEN);
+
+    hiddenlayers[0].number_of_nodes = D_HIDDEN_1;
+    hiddenlayers[0].activation = ACTIVATION_RELU;
+
+    hiddenlayers[1].number_of_nodes = D_HIDDEN_2;
+    hiddenlayers[1].activation = ACTIVATION_LINEAR;
 
     OutputLayer outputlayer;
     outputlayer.number_of_nodes = D_OUTPUT;
@@ -35,26 +39,26 @@ int main(int argc, char** argv) {
     ModelSpec modelspec;
     modelspec.number_of_input_nodes = D_INPUT;
     modelspec.number_of_hidden_layers = N_HIDDEN;
-    modelspec.hidden_layers = &hiddenlayer;
+    modelspec.hidden_layers = hiddenlayers;
     
     HyperParams hyperparmeters;
     hyperparmeters.number_of_devices = NUM_DEVICE;
     hyperparmeters.model_spec = modelspec;
-    hyperparmeters.epoch = D_HIDDEN;
+    hyperparmeters.epoch = EPOCH;
     hyperparmeters.merge_period_epoch = MERGE_EPOCH;
     hyperparmeters.batch_size = BATCH_SIZE;
     hyperparmeters.learning_rate = LEARNIG_RATE;
     
-
     SubModelSpec submodelspec;
     submodelspec.number_of_layers = N_HIDDEN;
     submodelspec.number_of_input_nodes = D_INPUT;
-    submodelspec.layers = &hiddenlayer;
+    submodelspec.layers = hiddenlayers;
     
-    SubModel submodel(submodelspec);
-    
+//    SubModel submodel(submodelspec); ////여기서 오류발생
+/*    
     cudaSetDevice(0);
     srand(time(NULL));
+    
     float *tfloat, *train_input, *test_input;
     int *tint, *train_label, *test_label;
     
@@ -147,14 +151,17 @@ int main(int argc, char** argv) {
     float lr = LEARNIG_RATE;
     float *learning_rate;
     
-    cudaMalloc(&one, sizeof(float) * D_HIDDEN * BATCH_SIZE);
-    cudaMemset(one, 1,  sizeof(float) * D_HIDDEN * BATCH_SIZE);
+    cudaMalloc(&one, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+    cudaMemset(one, 1,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
     
-	cudaMalloc(&zero, sizeof(float) * D_HIDDEN * BATCH_SIZE);
-    cudaMemset(zero, 0,  sizeof(float) * D_HIDDEN * BATCH_SIZE);
+	cudaMalloc(&zero, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+    cudaMemset(zero, 0,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
     
     cudaMalloc(&batch_size_buffer, sizeof(float) * BATCH_SIZE);
     cudaMalloc(&learning_rate, sizeof(float));
+    
+    float * loss;
+    cudaMalloc(&loss, sizeof(float));
     
     cudaMemcpyAsync(learning_rate, &lr, sizeof(float), cudaMemcpyHostToDevice, stream);
     
@@ -167,15 +174,16 @@ int main(int argc, char** argv) {
 			cudaMemcpyAsync(label, &train_label[n*BATCH_SIZE], sizeof(int) * BATCH_SIZE, cudaMemcpyHostToDevice, stream);
 
             run_forward(&submodel, input, BATCH_SIZE, stream, one);
-            run_output_layer(outputlayer, *submodel.forward_values, BATCH_SIZE, label, submodel.loss, *submodel.gradients, stream, one, batch_size_buffer);
-            run_backward(&submodel, D_OUTPUT, *submodel.forward_values, *submodel.gradients, BATCH_SIZE, learning_rate, stream, one, zero);
+            run_output_layer(outputlayer, submodel.forward_values[1], BATCH_SIZE, label, loss, submodel.gradients[1], stream, one, batch_size_buffer);
+            run_backward(&submodel, D_OUTPUT, submodel.forward_values[1], submodel.gradients[1], BATCH_SIZE, learning_rate, stream, one, zero);
             
 		}
 
 		//test
     }
     
-    
+*/    
     return 0;
+
 }
 
