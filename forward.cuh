@@ -27,8 +27,8 @@ void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cuda
     loss: float pointer to store loss output
     grad_input: float array pointer to store gradient matrix (batch_size * layer_size)
     stream: stream to schedule calculation
-    ones: batch size float array pointer which is set one
-    batch_size_buffer: float array pointer which has batch_size
+    ones: batch size float array in device memory which is set one
+    batch_size_buffer: float array in device memory which has batch_size
 */
 void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer);
 

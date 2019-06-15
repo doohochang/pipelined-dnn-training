@@ -17,7 +17,7 @@ enum Loss {
 };
 
 typedef struct _OutputLayer {
-    int number_of_nodes;
+    int number_of_input_nodes;
     Loss loss;
 } OutputLayer;
 
