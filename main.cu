@@ -12,10 +12,12 @@
 #define TEST_CASE 10000
 #define NUM_DEVICE 1
 #define THREAD_LEN 256
-#define N_HIDDEN 2
+#define N_HIDDEN 4
 #define D_INPUT 784
 #define D_HIDDEN_1 1000
-#define D_HIDDEN_2 10
+#define D_HIDDEN_2 1000
+#define D_HIDDEN_3 1000
+#define D_HIDDEN_4 10
 #define D_OUTPUT 10
 #define LEARNIG_RATE 0.01
 #define BATCH_SIZE 100
@@ -30,16 +32,23 @@ int main(int argc, char** argv) {
     hiddenlayers[0].activation = ACTIVATION_RELU;
 
     hiddenlayers[1].number_of_nodes = D_HIDDEN_2;
+    hiddenlayers[1].activation = ACTIVATION_RELU;
+    
+    hiddenlayers[1].number_of_nodes = D_HIDDEN_3;
+    hiddenlayers[1].activation = ACTIVATION_RELU;
+    
+    hiddenlayers[1].number_of_nodes = D_HIDDEN_4;
     hiddenlayers[1].activation = ACTIVATION_LINEAR;
 
     OutputLayer outputlayer;
-    outputlayer.number_of_nodes = D_OUTPUT;
+    outputlayer.number_of_input_nodes = D_OUTPUT;
     outputlayer.loss = LOSS_SOFTMAX_CROSS_ENTROPY;
 
     ModelSpec modelspec;
     modelspec.number_of_input_nodes = D_INPUT;
     modelspec.number_of_hidden_layers = N_HIDDEN;
     modelspec.hidden_layers = hiddenlayers;
+    modelspec.output_layer = outputlayer;
     
     HyperParams hyperparmeters;
     hyperparmeters.number_of_devices = NUM_DEVICE;
@@ -54,19 +63,21 @@ int main(int argc, char** argv) {
     submodelspec.number_of_input_nodes = D_INPUT;
     submodelspec.layers = hiddenlayers;
     
-    SubModel submodel(submodelspec); ////여기서 오류발생
+    SubModel submodel(submodelspec);
 /*    
     cudaSetDevice(0);
     srand(time(NULL));
     
-    float *tfloat, *train_input, *test_input;
-    int *tint, *train_label, *test_label;
+    float *host_train_input, *host_test_input *train_input, *test_input;
+    int *host_train_label, *host_test_label *train_label, *test_label;
     
-    tfloat = (float*)malloc(sizeof(float) * D_INPUT * TRAIN_CASE);
+    host_train_input = (float*)malloc(sizeof(float) * D_INPUT * TRAIN_CASE);
+    host_test_input = (float*)malloc(sizeof(float) * D_INPUT * TEST_CASE);
     cudaMalloc(&train_input, sizeof(float) * D_INPUT * TRAIN_CASE);
 	cudaMalloc(&test_input, sizeof(float) * D_INPUT * TEST_CASE);
     
-    tint = (int*)malloc(sizeof(int) * TRAIN_CASE);
+    host_train_label = (int*)malloc(sizeof(int) * TRAIN_CASE);
+    host_test_label = (int*)malloc(sizeof(int) * TEST_CASE);
     cudaMalloc(&train_label, sizeof(int) * TRAIN_CASE);
 	cudaMalloc(&test_label, sizeof(int) * TEST_CASE);
     
@@ -83,7 +94,7 @@ int main(int argc, char** argv) {
 	{
 		for(int m = 0; m < D_INPUT; m++)
 		{
-			fscanf(train_image_path, "%f", &tfloat[buffer_size++]);
+			fscanf(train_image_path, "%f", &host_train_input[buffer_size++]);
 		}
 	}
 	
@@ -91,7 +102,7 @@ int main(int argc, char** argv) {
 	buffer_size = 0;
 	for(int n = 0; n < TRAIN_CASE; n++)
 	{
-		fscanf(train_label_path, "%d", &tint[buffer_size++]);
+		fscanf(train_label_path, "%d", &host_train_label[buffer_size++]);
 	}
     
     float fshuffle[D_INPUT];
@@ -138,7 +149,7 @@ int main(int argc, char** argv) {
     
     float *input;
 	int *label;
-
+    
 	cudaMalloc(&input, sizeof(float) * D_INPUT * BATCH_SIZE);
 	cudaMalloc(&label, sizeof(int) * BATCH_SIZE);
     
@@ -181,8 +192,7 @@ int main(int argc, char** argv) {
 
 		//test
     }
-    
-*/    
+ */
     return 0;
 
 }

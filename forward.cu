@@ -142,7 +142,7 @@ void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned 
 void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer) {
     switch (layer.loss) {
         case LOSS_SOFTMAX_CROSS_ENTROPY:
-            run_softmax_cross_entropy(input, batch_size, layer.number_of_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
+            run_softmax_cross_entropy(input, batch_size, layer.number_of_input_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
             break;
     }
 }
