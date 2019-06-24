@@ -1,7 +1,12 @@
 #include <cuda_runtime.h>
+#include <queue>
 
 #include "schedule.cuh"
 #include "model.cuh"
+#include "forward.cuh"
+#include "backward.cuh"
+
+using namespace std;
 
 SubModelSpec *generate_submodel_specs(int num_devices, ModelSpec model_spec) {
     int base_num_layers = model_spec.number_of_hidden_layers / num_devices;
@@ -29,29 +34,47 @@ SubModelSpec *generate_submodel_specs(int num_devices, ModelSpec model_spec) {
     return submodels;
 }
 
+enum TaskType {
+    TASK_TYPE_FORWARD,
+    TASK_TYPE_BACKWARD
+};
+
+typedef struct _Task {
+    int step;
+    TaskType type;
+} Task;
+
+bool is_schedule_finished(Task *last_task, int num_devices, int num_steps) {
+    // TODO: Implement
+    return false;
+}
+
+// inputs, answers are assumed to be in host memory
 void schedule_training(
     HyperParams params,
-    int data_length, int input_dim, float **inputs, void *answers
+    int data_length, int input_dim, float *inputs, void *answers
 ) {
+    int num_devices = params.number_of_devices;
+
     // Generate submodel specs
-    SubModelSpec *submodel_specs = generate_submodel_specs(params.number_of_devices, params.model_spec);
+    SubModelSpec *submodel_specs = generate_submodel_specs(num_devices, params.model_spec);
 
     // Initialize submodels
-    // Each device has [params.number_of_devices] submodels
+    // Each device has [num_devices] submodels
     SubModel **submodels;
-    submodels = (SubModel **)malloc(sizeof(SubModel *) * params.number_of_devices);
-    for (int i = 0; i < params.number_of_devices; i++) {
+    submodels = (SubModel **)malloc(sizeof(SubModel *) * num_devices);
+    for (int i = 0; i < num_devices; i++) {
         cudaSetDevice(i);
-        cudaMalloc(submodels + i, sizeof(SubModel) * params.number_of_devices);
-        for (int j = 0; j < params.number_of_devices; j++) {
+        cudaMalloc(submodels + i, sizeof(SubModel) * num_devices);
+        for (int j = 0; j < num_devices; j++) {
             submodels[i][j] = SubModel(submodel_specs[i]);
         }
     }
     
     // Initialize Streams for each device
-    cudaStream_t *calc_streams = (cudaStream_t *)malloc(sizeof(cudaStream_t) * params.number_of_devices);
-    cudaStream_t *transfer_streams = (cudaStream_t *)malloc(sizeof(cudaStream_t) * params.number_of_devices);
-    for (int i = 0; i < params.number_of_devices; i++) {
+    cudaStream_t *calc_streams = (cudaStream_t *)malloc(sizeof(cudaStream_t) * num_devices);
+    cudaStream_t *transfer_streams = (cudaStream_t *)malloc(sizeof(cudaStream_t) * num_devices);
+    for (int i = 0; i < num_devices; i++) {
         cudaSetDevice(i);
         cudaStreamCreate(&calc_streams[i]);
         cudaStreamCreate(&transfer_streams[i]);
@@ -67,12 +90,13 @@ void schedule_training(
     }
 
     // Init another memory spaces for each device
-    float **ones = (float **)malloc(sizeof(float *) * params.number_of_devices);
-    float **zero = (float **)malloc(sizeof(float *) * params.number_of_devices);
-    float **batch_size_buffers = (float **)malloc(sizeof(float *) * params.number_of_devices);
-    float **in_spaces = (float **)malloc(sizeof(float *) * params.number_of_devices);
-    float **out_spaces = (float **)malloc(sizeof(float *) * params.number_of_devices);
-    for (int i = 0; i < params.number_of_devices; i++) {
+    float **ones = (float **)malloc(sizeof(float *) * num_devices);
+    float **zero = (float **)malloc(sizeof(float *) * num_devices);
+    float **batch_size_buffers = (float **)malloc(sizeof(float *) * num_devices);
+    float **f_in_spaces = (float **)malloc(sizeof(float *) * num_devices);
+    float **b_in_spaces = (float **)malloc(sizeof(float *) * num_devices);
+    float **out_spaces = (float **)malloc(sizeof(float *) * num_devices);
+    for (int i = 0; i < num_devices; i++) {
         cudaSetDevice(i);
 
         cudaMalloc(ones + i, sizeof(float) * max_layer_size);
@@ -83,7 +107,98 @@ void schedule_training(
 
         cudaMalloc(batch_size_buffers + i, sizeof(float) * max_layer_size);
 
-        cudaMalloc(in_spaces + i, sizeof(float) * params.batch_size * max_layer_size);
+        cudaMalloc(f_in_spaces + i, sizeof(float) * params.batch_size * max_layer_size);
+        cudaMalloc(b_in_spaces + i, sizeof(float) * params.batch_size * max_layer_size);
         cudaMalloc(out_spaces + i, sizeof(float) * params.batch_size * max_layer_size);
+    }
+
+    // Define tasks for scheduling
+    Task *last_task = (Task *)malloc(sizeof(Task) * num_devices);
+    Task *next_task = (Task *)malloc(sizeof(Task) * num_devices);
+    Task task_none = {-1, TASK_TYPE_FORWARD};
+
+    // Define prepared step number to schedule
+    int *prepared_f_step = (int *)malloc(sizeof(int) * num_devices);
+    int *prepared_b_step = (int *)malloc(sizeof(int) * num_devices);
+
+    // Store recorded events for each devices
+    queue<cudaEvent_t> *forward_ready_events = new queue<cudaEvent_t> [num_devices];
+    queue<cudaEvent_t> *backward_ready_events = new queue<cudaEvent_t> [num_devices];
+
+    int num_steps = (data_length + params.batch_size - 1) / params.batch_size;
+    for (int epoch = 0; epoch < params.epoch; epoch++) {
+        // Initialize variables
+        for (int i = 0; i < num_devices; i++) {
+            last_task[i] = task_none;
+            prepared_f_step[i] = (i == 0) ? 0 : -1;
+            prepared_b_step[i] = -1;
+        }
+
+        // Iterate scheduling timestamp
+        for (int t = 0; !is_schedule_finished(last_task, num_devices, num_steps); t++) {
+            // Get next tasks to schedule
+            for (int dev = 0; dev < num_devices; dev++) {
+                if (last_task[dev].step < 0) {
+                    next_task[dev].step = 0;
+                    next_task[dev].type = TASK_TYPE_FORWARD;
+                    continue;
+                }
+
+                next_task[dev] = task_none;
+                int step;
+                switch (last_task[dev].type) {
+                    case TASK_TYPE_BACKWARD:
+                        step = last_task[dev].step + num_devices - dev;
+                        if (step < num_steps) {
+                            // There are still remaining forward tasks
+                            next_task[dev].step = step;
+                            next_task[dev].type = TASK_TYPE_FORWARD;
+                        } else if (last_task[dev].step + 1 < num_steps) {
+                            // There's no remaining forward task
+                            next_task[dev].step = last_task[dev].step + 1;
+                            next_task[dev].type = TASK_TYPE_BACKWARD;
+                        }
+                        break;
+
+                    case TASK_TYPE_FORWARD:
+                        step = last_task[dev].step - (num_devices - dev - 1);
+                        if (step >= 0) {
+                            next_task[dev].step = step;
+                            next_task[dev].type = TASK_TYPE_BACKWARD;
+                        }
+                        break;
+                }
+            }
+
+            // Schedule next task if it's ready
+            for (int dev = 0; dev < num_devices; dev++) {
+                if (next_task[dev].step < 0) continue; // There's no futher task to schedule
+                SubModel *model;
+                switch (next_task[dev].type) {
+                    case TASK_TYPE_FORWARD:
+                        if (prepared_f_step[dev] < next_task[dev].step) break;
+                        cudaSetDevice(dev);
+                        model = submodels[dev] + (next_task[dev].step % num_devices);
+                        if (dev == 0) {
+                            run_forward(
+                                model,
+                                inputs + next_task[dev].step * params.batch_size * params.model_spec.number_of_input_nodes,
+                                params.batch_size,
+                                calc_streams[dev],
+                                ones[dev]
+                            );
+                        } else {
+                            
+                        }
+                        break;
+                    case TASK_TYPE_BACKWARD:
+                        if (prepared_b_step[dev] < next_task[dev].step) break;
+                        cudaSetDevice(dev);
+                        model = submodels[dev] + (next_task[dev].step % num_devices);
+                        // TODO: Implement
+                        break;
+                }
+            }
+        }
     }
 }
