@@ -24,7 +24,7 @@ void alloc_zero_values(float **dev_ptr, size_t size) {
     cudaMemset(*dev_ptr, 0, size);
 }
 
-SubModel::SubModel(SubModelSpec spec) {
+SubModel::SubModel(SubModelSpec spec, int batch_size) {
     this->spec = spec;
 
     // Initialize Curand generator
@@ -34,62 +34,36 @@ SubModel::SubModel(SubModelSpec spec) {
 
     // Alloc weight matrices
     //cudaMalloc(&(this->weight_matrices), sizeof(float *) * spec.number_of_layers); //이렇게하면 alloc_rand에서 오류발생
+    
+    this->weight_matrices_size = spec.number_of_input_nodes * spec.layers[0].number_of_nodes;
+    
+    this->biases_size = spec.layers[0].number_of_nodes;
+    this->forward_values_size = batch_size * spec.layers[0].number_of_nodes;
+    
 
-    cudaMalloc(&(this->weight_matrices), sizeof(float *) * spec.number_of_layers);
-    this->weight_matrices_buffer = (float**)malloc(sizeof(float *) * spec.number_of_layers);
-
+    for(int i = 1; i < spec.number_of_layers; i++){
+        this->weight_matrices_size += spec.layers[i-1].number_of_nodes * spec.layers[i].number_of_nodes;
+        this->biases_size += spec.layers[i].number_of_nodes;
+        this->forward_values_size += batch_size * spec.layers[i].number_of_nodes;
+    }
+    
+    this->gradients_size = this->weight_matrices_size;
+    
     alloc_rand_values(
-        &(this->weight_matrices_buffer[0]),
-        sizeof(float) * spec.number_of_input_nodes * spec.layers[0].number_of_nodes,
+        &(this->weight_matrices),
+        sizeof(float) * this->weight_matrices_size,
         &randGen,
-        sqrt(6.0f / (spec.number_of_input_nodes + spec.layers[0].number_of_nodes))
+        sqrt(6.0f / (spec.layers[0].number_of_nodes + spec.layers[1].number_of_nodes))
     );
-  
-    for (int i = 1; i < spec.number_of_layers; i++) {
-        alloc_rand_values(
-            &(this->weight_matrices_buffer[i]),
-            sizeof(float) * spec.layers[i - 1].number_of_nodes * spec.layers[i].number_of_nodes,
-            &randGen,
-            sqrt(6.0f / (spec.layers[i - 1].number_of_nodes + spec.layers[i].number_of_nodes))
-        );
-    }
-    
-    cudaMemcpy(this->weight_matrices, this->weight_matrices_buffer, sizeof(float *) * spec.number_of_layers, cudaMemcpyHostToDevice);
 
-    // Alloc biases & forward values
-    /* //이렇게하면 오류발생
-    cudaMalloc(&(this->biases), sizeof(float *) * spec.number_of_layers);
-    cudaMalloc(&(this->forward_values), sizeof(float *) * spec.number_of_layers);
-    cudaMalloc(&(this->gradients), sizeof(float *) * spec.number_of_layers);*/
+    cudaMalloc(&(this->forward_values), sizeof(float) * this->forward_values_size);
+    cudaMalloc(&(this->gradients), sizeof(float) * this->gradients_size);
+    
+    alloc_zero_values(&(this->biases), sizeof(float) * this->biases_size);
 
-    this->biases_buffer = (float**)malloc(sizeof(float *) * spec.number_of_layers);
-    this->forward_values_buffer = (float**)malloc(sizeof(float *) * spec.number_of_layers);
-    this->gradients_buffer = (float**)malloc(sizeof(float *) * spec.number_of_layers);
-    
-    cudaMalloc(&(this->biases), sizeof(float *) * spec.number_of_layers);
-    cudaMalloc(&(this->forward_values), sizeof(float *) * spec.number_of_layers);
-    cudaMalloc(&(this->gradients), sizeof(float *) * spec.number_of_layers);
-    
-    for (int i = 0; i < spec.number_of_layers; i++) {
-        alloc_zero_values(&(this->biases_buffer[i]), sizeof(float) * spec.layers[i].number_of_nodes);
-        cudaMalloc(&(this->forward_values_buffer[i]), sizeof(float) * spec.layers[i].number_of_nodes);
-        cudaMalloc(&(this->gradients_buffer[i]), sizeof(float) * spec.layers[i].number_of_nodes);
-    }
-    
-    cudaMemcpy(this->biases, this->biases_buffer, sizeof(float *) * spec.number_of_layers, cudaMemcpyHostToDevice);
-    cudaMemcpy(this->forward_values, this->forward_values_buffer, sizeof(float *) * spec.number_of_layers, cudaMemcpyHostToDevice);
-    cudaMemcpy(this->gradients, this->gradients_buffer, sizeof(float *) * spec.number_of_layers, cudaMemcpyHostToDevice);
 }
 
 SubModel::~SubModel() {
-    
-    for (int i = 0; i < spec.number_of_layers; i++) {
-        cudaFree(this->weight_matrices_buffer[i]);
-        cudaFree(this->biases_buffer[i]);
-        cudaFree(this->forward_values_buffer[i]);
-        cudaFree(this->gradients_buffer[i]);
-    }
-
     cudaFree(this->weight_matrices);
     cudaFree(this->biases);
     cudaFree(this->forward_values);

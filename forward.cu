@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <stdio.h>
 
 #include "forward.cuh"
 #include "model.cuh"
@@ -54,21 +55,32 @@ void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cuda
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
+    
+    int weight_matrices_start_index = 0;
+    int biases_start_index = 0;
+    int forward_values_start_index = 0;
+    int forward_values_start_index_temp = 0;
 
     run_forward_step(
         handle, stream, submodel->spec.layers[0].activation,
         input, batch_size, submodel->spec.number_of_input_nodes,
-        submodel->weight_matrices[0], submodel->biases[0],
-        submodel->forward_values[0], submodel->spec.layers[0].number_of_nodes,
+        submodel->weight_matrices, submodel->biases,
+        submodel->forward_values, submodel->spec.layers[0].number_of_nodes,
         one
     );
-
+    
     for (int i = 1; i < submodel->spec.number_of_layers; i++){
+        
+        weight_matrices_start_index += submodel->spec.number_of_input_nodes * submodel->spec.layers[0].number_of_nodes;
+        biases_start_index += batch_size * submodel->spec.layers[0].number_of_nodes;
+        forward_values_start_index_temp = forward_values_start_index;
+        forward_values_start_index += batch_size * submodel->spec.layers[0].number_of_nodes;
+
         run_forward_step(
             handle, stream, submodel->spec.layers[i].activation,
-            submodel->forward_values[i - 1], batch_size, submodel->spec.layers[i - 1].number_of_nodes,
-            submodel->weight_matrices[i], submodel->biases[i],
-            submodel->forward_values[i], submodel->spec.layers[i].number_of_nodes,
+            submodel->forward_values + forward_values_start_index_temp, batch_size, submodel->spec.layers[i - 1].number_of_nodes,
+            submodel->weight_matrices + weight_matrices_start_index, submodel->biases + biases_start_index,
+            submodel->forward_values + forward_values_start_index, submodel->spec.layers[i].number_of_nodes,
             one
         );
     }
@@ -142,7 +154,9 @@ void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned 
 void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer) {
     switch (layer.loss) {
         case LOSS_SOFTMAX_CROSS_ENTROPY:
-            run_softmax_cross_entropy(input, batch_size, layer.number_of_input_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
+            //run_softmax_cross_entropy(input, batch_size, layer.number_of_input_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
+            //printf("%lf", *loss);
+            //printf("test");
             break;
     }
 }

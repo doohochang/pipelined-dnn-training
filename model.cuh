@@ -14,22 +14,24 @@ class SubModel {
                 row = number of nodes in i-1 th layer
                 col = number of nodes in i th layer
         */
-        float **weight_matrices;
-        float **weight_matrices_buffer;
         
+        
+        
+        float *weight_matrices;
+        int weight_matrices_size;
 
         // Bias vectors of hidden layers
-        float **biases;
-        float **biases_buffer;
-
-        // Computed forward values of each node
-        float **forward_values;
-        float **forward_values_buffer;
+        float *biases;
+        int biases_size;
         
-        float **gradients;
-        float **gradients_buffer;
+        // Computed forward values of each node
+        float *forward_values;
+        int forward_values_size;
+        
+        float *gradients;
+        int gradients_size;
 
-        SubModel(SubModelSpec spec);
+        SubModel(SubModelSpec spec, int batch_size);
         ~SubModel();
 };
 

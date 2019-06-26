@@ -85,7 +85,7 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
-    
+/*    
     int last = submodel->spec.number_of_layers - 1;
     
     run_backward_step(
@@ -109,5 +109,5 @@ void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_va
                 ones, zero
             );
         }
-    } 
+    } */
 }

@@ -20,9 +20,9 @@
 #define D_HIDDEN_4 10
 #define D_OUTPUT 10
 #define LEARNIG_RATE 0.01
-#define BATCH_SIZE 100
+#define BATCH_SIZE 1
 #define MERGE_EPOCH 1
-#define EPOCH 1000
+#define EPOCH 1
 
 int main(int argc, char** argv) {
     
@@ -62,14 +62,14 @@ int main(int argc, char** argv) {
     submodelspec.number_of_layers = N_HIDDEN;
     submodelspec.number_of_input_nodes = D_INPUT;
     submodelspec.layers = hiddenlayers;
-    
-    SubModel submodel(submodelspec);
-/*    
+
+    SubModel submodel(submodelspec, BATCH_SIZE);
+   
     cudaSetDevice(0);
     srand(time(NULL));
     
-    float *host_train_input, *host_test_input *train_input, *test_input;
-    int *host_train_label, *host_test_label *train_label, *test_label;
+    float *host_train_input, *host_test_input, *train_input, *test_input;
+    int *host_train_label, *host_test_label, *train_label, *test_label;
     
     host_train_input = (float*)malloc(sizeof(float) * D_INPUT * TRAIN_CASE);
     host_test_input = (float*)malloc(sizeof(float) * D_INPUT * TEST_CASE);
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
 	{
 		fscanf(train_label_path, "%d", &host_train_label[buffer_size++]);
 	}
-    
+/*    
     float fshuffle[D_INPUT];
 	int ishuffle;
 	for(int n = 0; n < TRAIN_CASE; n++)
@@ -119,9 +119,10 @@ int main(int argc, char** argv) {
 		memcpy(&tfloat[idx*D_INPUT], &tfloat[n*D_INPUT], sizeof(float) * D_INPUT);
 		memcpy(&tfloat[n*D_INPUT], fshuffle, sizeof(float) * D_INPUT);
 	}
+*/
     
-    cudaMemcpy(train_input, tfloat, sizeof(float) * D_INPUT * TRAIN_CASE, cudaMemcpyHostToDevice);
-	cudaMemcpy(train_label, tint, sizeof(int) * TRAIN_CASE, cudaMemcpyHostToDevice);
+    cudaMemcpy(train_input, host_train_input, sizeof(float) * D_INPUT * TRAIN_CASE, cudaMemcpyHostToDevice);
+	cudaMemcpy(train_label, host_train_label, sizeof(int) * TRAIN_CASE, cudaMemcpyHostToDevice);
     
     //get test_input
 	buffer_size = 0;
@@ -129,24 +130,26 @@ int main(int argc, char** argv) {
 	{
 		for(int m = 0; m < D_INPUT; m++)
 		{
-			fscanf(test_image_path, "%f", &tfloat[buffer_size++]);
+			fscanf(test_image_path, "%f", &host_test_input[buffer_size++]);
 		}
 	}
 
-	cudaMemcpy(test_input, tfloat, sizeof(float) * D_INPUT * TEST_CASE, cudaMemcpyHostToDevice);
+	cudaMemcpy(test_input, host_test_input, sizeof(float) * D_INPUT * TEST_CASE, cudaMemcpyHostToDevice);
 
 	//get test_label
 	buffer_size = 0;
 	for(int n = 0; n < TRAIN_CASE; n++)
 	{
-		fscanf(test_label_path, "%d", &tint[buffer_size++]);
+		fscanf(test_label_path, "%d", &host_test_label[buffer_size++]);
 	}
+    
+    cudaMemcpy(test_label, host_test_label, sizeof(int) * TEST_CASE, cudaMemcpyHostToDevice);
 
 	fclose(train_image_path);
 	fclose(train_label_path);
 	fclose(test_image_path);
 	fclose(test_label_path);
-    
+   
     float *input;
 	int *label;
     
@@ -156,43 +159,47 @@ int main(int argc, char** argv) {
     cudaStream_t stream;
 	cudaStreamCreate(&stream);
     
-    float *one;
-    float *zero;
+    float *ones;
+    float *zeros;
     float *batch_size_buffer;
-    float lr = LEARNIG_RATE;
     float *learning_rate;
     
-    cudaMalloc(&one, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
-    cudaMemset(one, 1,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+    cudaMalloc(&ones, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+    cudaMemset(ones, 1.0f,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
     
-	cudaMalloc(&zero, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
-    cudaMemset(zero, 0,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+	cudaMalloc(&zeros, sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
+    cudaMemset(zeros, 0.0f,  sizeof(float) * D_HIDDEN_1 * BATCH_SIZE);
     
     cudaMalloc(&batch_size_buffer, sizeof(float) * BATCH_SIZE);
     cudaMalloc(&learning_rate, sizeof(float));
+    cudaMemset(learning_rate, LEARNIG_RATE,  sizeof(float));
     
     float * loss;
     cudaMalloc(&loss, sizeof(float));
     
-    cudaMemcpyAsync(learning_rate, &lr, sizeof(float), cudaMemcpyHostToDevice, stream);
+    int last_layer_forward_values_start_index = BATCH_SIZE * (D_HIDDEN_1 + D_HIDDEN_2 + D_HIDDEN_3); // 나중에 동적으로구현
+    int last_layer_gradient_start_index = D_INPUT * D_HIDDEN_1 + D_HIDDEN_1 * D_HIDDEN_2 + D_HIDDEN_2 * D_HIDDEN_3;
     
     //start = clock();
 	for(int epoch = 0; epoch < EPOCH; epoch++)
 	{
 		for(int n = 0; n < TRAIN_CASE/BATCH_SIZE; n++)
 		{
-			cudaMemcpyAsync(input, &train_input[n*BATCH_SIZE*D_INPUT], sizeof(float) * BATCH_SIZE * D_INPUT, cudaMemcpyHostToDevice, stream);
-			cudaMemcpyAsync(label, &train_label[n*BATCH_SIZE], sizeof(int) * BATCH_SIZE, cudaMemcpyHostToDevice, stream);
+			cudaMemcpyAsync(input, &train_input[n*BATCH_SIZE*D_INPUT], sizeof(float) * BATCH_SIZE * D_INPUT, cudaMemcpyDeviceToDevice, stream);
+			cudaMemcpyAsync(label, &train_label[n*BATCH_SIZE], sizeof(int) * BATCH_SIZE, cudaMemcpyDeviceToDevice, stream);
 
-            run_forward(&submodel, input, BATCH_SIZE, stream, one);
-            run_output_layer(outputlayer, submodel.forward_values[1], BATCH_SIZE, label, loss, submodel.gradients[1], stream, one, batch_size_buffer);
-            run_backward(&submodel, D_OUTPUT, submodel.forward_values[1], submodel.gradients[1], BATCH_SIZE, learning_rate, stream, one, zero);
+            run_forward(&submodel, input, BATCH_SIZE, stream, ones);
+            run_output_layer(outputlayer, submodel.forward_values + last_layer_forward_values_start_index,
+                            BATCH_SIZE, label, loss,
+                            submodel.gradients + last_layer_gradient_start_index,
+                            stream, ones, batch_size_buffer);
+            //run_backward(&submodel, D_OUTPUT, submodel.forward_values[1], submodel.gradients[1], BATCH_SIZE, learning_rate, stream, ones, zeros);
             
 		}
 
 		//test
     }
- */
+ 
     return 0;
 
 }
