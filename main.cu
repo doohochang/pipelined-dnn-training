@@ -62,6 +62,7 @@ int main(int argc, char** argv) {
     submodelspec.number_of_layers = N_HIDDEN;
     submodelspec.number_of_input_nodes = D_INPUT;
     submodelspec.layers = hiddenlayers;
+    submodelspec.is_last_submodel = true;
 
     SubModel submodel(submodelspec, BATCH_SIZE);
    
@@ -176,9 +177,8 @@ int main(int argc, char** argv) {
     
     float * loss;
     cudaMalloc(&loss, sizeof(float));
+    float* host_loss = (float*)malloc(sizeof(float));
     
-    int last_layer_forward_values_start_index = BATCH_SIZE * (D_HIDDEN_1 + D_HIDDEN_2 + D_HIDDEN_3); // 나중에 동적으로구현
-    int last_layer_gradient_start_index = D_INPUT * D_HIDDEN_1 + D_HIDDEN_1 * D_HIDDEN_2 + D_HIDDEN_2 * D_HIDDEN_3;
     
     //start = clock();
 	for(int epoch = 0; epoch < EPOCH; epoch++)
@@ -188,11 +188,9 @@ int main(int argc, char** argv) {
 			cudaMemcpyAsync(input, &train_input[n*BATCH_SIZE*D_INPUT], sizeof(float) * BATCH_SIZE * D_INPUT, cudaMemcpyDeviceToDevice, stream);
 			cudaMemcpyAsync(label, &train_label[n*BATCH_SIZE], sizeof(int) * BATCH_SIZE, cudaMemcpyDeviceToDevice, stream);
 
-            run_forward(&submodel, input, BATCH_SIZE, stream, ones);
-            run_output_layer(outputlayer, submodel.forward_values + last_layer_forward_values_start_index,
-                            BATCH_SIZE, label, loss,
-                            submodel.gradients + last_layer_gradient_start_index,
-                            stream, ones, batch_size_buffer);
+            run_forward(&submodel, input, BATCH_SIZE, stream, ones, outputlayer, loss, label, batch_size_buffer, host_loss);
+            
+            
             //run_backward(&submodel, D_OUTPUT, submodel.forward_values[1], submodel.gradients[1], BATCH_SIZE, learning_rate, stream, ones, zeros);
             
 		}

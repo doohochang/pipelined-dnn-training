@@ -2,6 +2,7 @@
 #include <cublas_v2.h>
 #include <stdio.h>
 
+#include "hparams.cuh"
 #include "forward.cuh"
 #include "model.cuh"
 #include "activation.cuh"
@@ -51,7 +52,80 @@ void run_forward_step(
     }
 }
 
-void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one) {
+
+__global__ void exp_kernel(float *array, unsigned int size) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index < size)
+		array[index] = exp(array[index]);
+}
+
+__global__ void set_value(float value, float *array, unsigned int size) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < size)
+        array[index] = value;
+}
+
+__global__ void divide_by_vector(float *matrix, float *vector, unsigned int row, unsigned int col) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < row * col)
+        matrix[index] /= vector[index / col];
+}
+
+__global__ void minus_one(float *matrix, int *indices, unsigned int row, unsigned int col) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < row)
+        matrix[index * col + indices[index]] -= 1;
+}
+
+__global__ void pick_minus_log_ps(float *matrix, float *minus_log_ps, int *indices, unsigned int row, unsigned int col) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < row)
+        minus_log_ps[index] = -log(matrix[index * col + indices[index]]);
+}
+
+
+void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned int number_of_scores, int *answers, float *loss, float *grad_scores, cudaStream_t stream, cublasHandle_t handle, const float *ones, float *batch_size_buffer) {
+    
+    cudaMemcpyAsync(grad_scores, scores, sizeof(float) * batch_size * number_of_scores, cudaMemcpyDeviceToDevice, stream);
+    exp_kernel<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size * number_of_scores);
+    
+    
+    set_value<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(0, batch_size_buffer, batch_size);
+    
+    cublasSgemv(
+        handle, CUBLAS_OP_N,
+        batch_size, number_of_scores,
+        ones,
+        grad_scores, batch_size,
+        ones, 1,
+        ones,
+        batch_size_buffer, 1
+    );
+    
+    divide_by_vector<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, batch_size, number_of_scores);
+    
+    pick_minus_log_ps<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, answers, batch_size, number_of_scores);
+    
+    cublasSdot(handle, batch_size, batch_size_buffer, 1, ones, 1, loss);
+    
+    minus_one<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, answers, batch_size, number_of_scores);
+    
+    }
+
+void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, int *answers, float *loss, float *grad_input, cudaStream_t stream, cublasHandle_t handle,  float *ones, float *batch_size_buffer, float* host_loss) {
+
+    switch (layer.loss) {
+        case LOSS_SOFTMAX_CROSS_ENTROPY:
+            run_softmax_cross_entropy(input, batch_size, layer.number_of_input_nodes, answers, loss, grad_input, stream, handle, ones, batch_size_buffer);
+            cudaMemcpyAsync(host_loss, loss, sizeof(float), cudaMemcpyDeviceToHost, stream);
+            printf("%lf\n", *host_loss);
+            break;
+    }
+}
+
+
+void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one, OutputLayer outputlayer, float* loss, int* label, float *batch_size_buffer, float* host_loss) {
+    
     cublasHandle_t handle;
     cublasCreate(&handle);
     cublasSetStream(handle, stream);
@@ -84,80 +158,15 @@ void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cuda
             one
         );
     }
-}
-
-__global__ void exp_kernel(float *array, unsigned int size) {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-	if (index < size)
-		array[index] = exp(array[index]);
-}
-
-__global__ void set_value(float value, float *array, unsigned int size) {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < size)
-        array[index] = value;
-}
-
-__global__ void divide_by_vector(float *matrix, float *vector, unsigned int row, unsigned int col) {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < row * col)
-        matrix[index] /= vector[index / col];
-}
-
-__global__ void minus_one(float *matrix, unsigned int *indices, unsigned int row, unsigned int col) {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < row)
-        matrix[index * col + indices[index]] -= 1;
-}
-
-__global__ void pick_minus_log_ps(float *matrix, float *minus_log_ps, unsigned int *indices, unsigned int row, unsigned int col) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < row)
-        minus_log_ps[index] = -log(matrix[index * col + indices[index]]);
-}
-
-void run_softmax_cross_entropy(float *scores, unsigned int batch_size, unsigned int number_of_scores, unsigned int *answers, float *loss, float *grad_scores, cudaStream_t stream, const float *ones, float *batch_size_buffer) {
-    cublasHandle_t handle;
-    cublasCreate(&handle);
-    cublasSetStream(handle, stream);
-
-    cudaMemcpyAsync(grad_scores, scores, sizeof(float) * batch_size * number_of_scores, cudaMemcpyDeviceToDevice, stream);
-    exp_kernel<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size * number_of_scores);
-
-    /*
-        float *ones;
-        cudaMalloc(&ones, sizeof(float) * number_of_scores);
-        set_value<<<(number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(1.0f, ones, number_of_scores);
-    */
-
-    set_value<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(0, batch_size_buffer, batch_size);
     
-    cublasSgemv(
-        handle, CUBLAS_OP_N,
-        batch_size, number_of_scores,
-        ones,
-        grad_scores, batch_size,
-        ones, 1,
-        ones,
-        batch_size_buffer, 1
-    );
-
-    divide_by_vector<<<(batch_size * number_of_scores + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, batch_size, number_of_scores);
-
-    pick_minus_log_ps<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, batch_size_buffer, answers, batch_size, number_of_scores);
-    
-    cublasSdot(handle, batch_size, batch_size_buffer, 1, ones, 1, loss);
-
-    minus_one<<<(batch_size + THREAD_NUM - 1) / THREAD_NUM, THREAD_NUM, 0, stream>>>(grad_scores, answers, batch_size, number_of_scores);
-}
-
-void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer) {
-    switch (layer.loss) {
-        case LOSS_SOFTMAX_CROSS_ENTROPY:
-            //run_softmax_cross_entropy(input, batch_size, layer.number_of_input_nodes, (unsigned int *)answers, loss, grad_input, stream, ones, batch_size_buffer);
-            //printf("%lf", *loss);
-            //printf("test");
-            break;
+    if (submodel->spec.is_last_submodel){
+        run_output_layer(outputlayer, submodel->forward_values + forward_values_start_index_temp,
+                            batch_size, label, loss,
+                            submodel->gradients + weight_matrices_start_index,
+                            stream, handle, one, batch_size_buffer, host_loss);
+        
     }
 }
+
+
 

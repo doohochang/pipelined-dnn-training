@@ -32,6 +32,7 @@ typedef struct _SubModelSpec {
     unsigned int number_of_layers;
     unsigned int number_of_input_nodes;
     HiddenLayer *layers;
+    bool is_last_submodel;
 } SubModelSpec;
 
 typedef struct _HyperParams {

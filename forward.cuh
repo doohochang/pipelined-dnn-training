@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 
 #include "model.cuh"
+#include "hparams.cuh"
 
 /*
     Run forward algorithm with the given submodel
@@ -13,7 +14,7 @@
     stream: stream to schedule forward algorithm
     one: float type 1 in device memory
 */
-void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one);
+void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cudaStream_t stream, float *one, OutputLayer outputlayer, float* loss, int* label, float *batch_size_buffer, float* host_loss);
 
 
 
@@ -30,7 +31,7 @@ void run_forward(SubModel *submodel, float *input, unsigned int batch_size, cuda
     ones: batch size float array pointer which is set one
     batch_size_buffer: float array pointer which has batch_size
 */
-void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, void *answers, float *loss, float *grad_input, cudaStream_t stream, float *ones, float *batch_size_buffer);
+//void run_output_layer(OutputLayer layer, float *input, unsigned int batch_size, int *answers, float *loss, float *grad_input, cudaStream_t stream, cublasHandle_t handle, float *ones, float *batch_size_buffer);
 
 #endif
 
