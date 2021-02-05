@@ -17,10 +17,11 @@ enum Loss {
 };
 
 typedef struct _OutputLayer {
-    int number_of_nodes;
+    int number_of_input_nodes;
     Loss loss;
 } OutputLayer;
 
+// Number of hidden layers must be greater than number of devices
 typedef struct _ModelSpec {
     unsigned int number_of_input_nodes;
     unsigned int number_of_hidden_layers;

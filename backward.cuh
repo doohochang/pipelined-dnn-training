@@ -14,11 +14,11 @@
     batch_size: the size of mini batch
     learning_weight: -(learning_weight / batch_size)
     stream: stream to schedule forward algorithm
-    one: float type 1 in device memory
+    ones: float array with value 1s in device memory which has max layer size
     zero: float type 0 in device memory
 */
 
-void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *learning_weight, cudaStream_t stream, float *one, float* zero);
+void run_backward(SubModel *submodel, int number_of_upper_nodes, float *upper_values, float *upper_grads, unsigned int batch_size, float *learning_weight, cudaStream_t stream, float *ones, float* zero);
 
 
 #endif
